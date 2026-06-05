@@ -1,2 +1,20 @@
+# Environment — contains real secrets, never commit
 .env
+
+# Runtime data — generated at runtime, not source code
+data/
+logs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Tests
+.pytest_cache/
+htmlcov/
+.coverage
+data/
+# Dev
 helper.txt
