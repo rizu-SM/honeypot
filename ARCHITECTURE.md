@@ -76,25 +76,56 @@ captures attacker behaviour, enriches it with GeoIP data, and presents everythin
 | File | Protocol | Port | Technique |
 |------|----------|------|-----------|
 | `base.py` | — | — | `BaseService` with `start()` / `stop()` threading pattern |
-| `ssh_honeypot.py` | SSH | 2222 | `paramiko.ServerInterface` + `Transport`. Always accepts auth. Fake interactive shell with canned responses. |
+| `ssh_honeypot.py` | SSH | 2222 | `paramiko.ServerInterface` + `Transport`. Always accepts auth. Full fake interactive shell powered by the `deception/` module. |
 | `http_honeypot.py` | HTTP | 8080 | Flask app. Serves fake `.env`, `wp-login.php`, admin panels. Sets `Server: Apache` headers. |
 | `ftp_honeypot.py` | FTP | 2121 | `socketserver.ThreadingTCPServer`. Handles `USER` / `PASS` / `QUIT` commands. |
 | `telnet_honeypot.py` | Telnet | 2323 | Raw socket. Strips IAC negotiation bytes. Fake login prompt. |
 
-### 3. Intelligence (`honeypot/intelligence/`)
+### 3. Deception (`honeypot/deception/`)
+
+The deception layer gives the SSH honeypot a convincing, stateful Linux shell. Each session gets its own isolated environment — commands work, the filesystem changes persist within the session, and the prompt updates as the attacker navigates.
+
+| File | Purpose |
+|------|---------|
+| `pseudo_fs.py` | In-memory Linux filesystem (`deepcopy` per session). Supports `cd`, `ls`, `read_file`, `write_file`, `mkdir`, `remove`, path resolution with `..` and `~`. |
+| `command_runner.py` | Main dispatcher. Handles `sudo` stripping, pipe chains (`cmd1 \| cmd2`), output redirect (`>` / `>>`), realistic delay (20–150ms), and `exit` detection. |
+| `commands/filesystem.py` | `ls`, `cd`, `pwd`, `mkdir`, `rm`, `cp`, `mv`, `touch`, `chmod`, `chown` |
+| `commands/core.py` | `cat`, `grep`, `echo`, `find`, `head`, `tail`, `wc`, `which`, `history`, `env`, `export` |
+| `commands/system.py` | `ps`, `top`, `uname`, `whoami`, `id`, `uptime`, `date`, `df`, `free`, `lscpu`, `w`, `last` |
+| `commands/network.py` | `ifconfig`, `ip`, `netstat`, `ss`, `ping`, `wget`, `curl`, `nmap`, `nc`, `ssh` |
+| `commands/package.py` | `apt`, `apt-get`, `pip`, `pip3`, `yum`, `dnf` |
+| `commands/service.py` | `systemctl`, `service`, `crontab` |
+
+**How a command flows:**
+
+```
+attacker types: "ls /etc | grep pass"
+                        │
+              command_runner.run_command()
+                        │
+              split on " | " → ["ls /etc", "grep pass"]
+                        │
+              stage 1: handle_filesystem("ls /etc", fs)  → "crontab\nhostname\n..."
+                        │ output fed as stdin
+              stage 2: handle_core("grep pass /tmp/_pipe_xxx", fs)  → "passwd"
+                        │
+              return "passwd" to SSH channel
+```
+
+### 5. Intelligence (`honeypot/intelligence/`)
 
 | File | Purpose |
 |------|---------|
 | `geoip.py` | Async GeoIP enrichment via ip-api.com. In-process dict cache (1024 entries). Rate-limited to 45 req/min. Skips RFC-1918 private IPs. |
 | `threat_intel.py` | AbuseIPDB reputation check. No-op if API key not set. LRU cache to avoid repeat calls. |
 
-### 4. Alerts (`honeypot/alerts/`)
+### 6. Alerts (`honeypot/alerts/`)
 
 | File | Purpose |
 |------|---------|
 | `discord_alert.py` | Sends a Discord embed when attack count crosses a configurable threshold. Thread-safe counter. |
 
-### 5. Dashboard (`honeypot/dashboard/`)
+### 7. Dashboard (`honeypot/dashboard/`)
 
 | File | Purpose |
 |------|---------|
@@ -166,3 +197,5 @@ the only shared mutable state besides SQLite.
 | paramiko always accepts auth | Maximises command capture. Attackers who expect rejection move on; accepting them yields more intelligence. |
 | 4 prod dependencies only | `paramiko`, `flask`, `requests`, `python-dotenv`. Everything else is stdlib. Easy audit, easy Docker layer caching. |
 | High port numbers (2222, 8080…) | Avoids root privileges on Linux and UAC prompts on Windows during development. |
+| Deception layer per-session deepcopy | Each attacker gets an independent filesystem. Mutations (mkdir, rm, >) don't bleed between sessions or corrupt the original tree. |
+| Pipe via temp file in PseudoFS | Avoids changing all handler signatures to accept stdin. The temp file is created, used, and deleted within a single `run_command` call — invisible to the attacker. |

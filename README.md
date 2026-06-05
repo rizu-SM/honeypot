@@ -1,6 +1,6 @@
 # HoneyTrap 🍯
 
-A multi-protocol honeypot system built in Python that captures SSH, HTTP, FTP, and Telnet attack attempts with real-time GeoIP enrichment, a live web dashboard, and Discord alerts.
+A multi-protocol honeypot system built in Python that captures SSH, HTTP, FTP, and Telnet attack attempts. SSH attackers land in a realistic fake Linux shell with a stateful filesystem, pipe support, and 40+ simulated commands. All interactions are enriched with GeoIP data, stored in SQLite, and displayed in a live web dashboard with Discord alerts.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
 ![Flask](https://img.shields.io/badge/Flask-3.1-black?logo=flask)
@@ -28,10 +28,11 @@ Attacker (SSH / FTP / HTTP / Telnet)
 ## Features
 
 - **4 protocol honeypots** running concurrently as threads
-  - SSH — captures credentials + every command typed in the fake shell
-  - HTTP — captures requests to fake `.env`, WordPress login, admin panels
-  - FTP — captures login attempts
-  - Telnet — captures login attempts
+  - SSH — credentials + every command captured in a full fake Linux shell
+  - HTTP — requests to fake `.env`, WordPress login, admin panels
+  - FTP — login attempts
+  - Telnet — login attempts
+- **Realistic fake shell** — stateful in-memory Linux filesystem per SSH session; 40+ commands, pipe (`ls | grep`), output redirect (`echo x > file`), dynamic prompt (`root@ubuntu:/etc#`)
 - **Real-time web dashboard** with stat cards, charts, and live event table
 - **Attack map** — world map showing attacker locations (Leaflet.js)
 - **GeoIP enrichment** — async lookup via ip-api.com (free, no key needed)
@@ -136,6 +137,7 @@ honeypot/
 ├── honeypot/
 │   ├── core/                  # Config, database, logger, event bus
 │   ├── services/              # SSH, HTTP, FTP, Telnet honeypots
+│   ├── deception/             # Fake shell: filesystem, 40+ commands, pipe/redirect
 │   ├── intelligence/          # GeoIP enrichment
 │   ├── alerts/                # Discord notifications
 │   └── dashboard/             # Flask web UI + REST API
@@ -152,6 +154,7 @@ honeypot/
 ## Technical Highlights
 
 - **Custom SSH server** using paramiko's `ServerInterface` and `Transport` — handles banner negotiation, auth, interactive shell sessions, and exec requests
+- **Deception layer** — in-memory fake Linux filesystem (`deepcopy` per session), 40+ simulated commands, pipe chaining (`cmd1 | cmd2`), output redirect (`> file`), and a dynamic shell prompt that updates as the attacker navigates
 - **Event-driven architecture** with a thread-safe `queue.Queue` dispatcher — honeypot threads never block on I/O
 - **Async GeoIP enrichment** via `ThreadPoolExecutor` — events are saved immediately, geo data is patched in the background
 - **SQLite WAL mode** with per-thread connections — concurrent writes from 4 services without locks or contention
