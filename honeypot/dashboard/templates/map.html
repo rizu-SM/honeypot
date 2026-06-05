@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Attack Map{% endblock %}
+
+{% block content %}
+<div class="stat-card">
+  <h6 class="text-secondary mb-3">Global Attack Map</h6>
+  <div id="map"></div>
+  <p class="text-secondary mt-2 mb-0" style="font-size:0.8rem;">
+    Circle size = number of attacks from that location. Click a marker for details.
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Leaflet.js -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  // Dark tile layer from CartoDB
+  const map = L.map('map').setView([20, 0], 2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CartoDB',
+    maxZoom: 18,
+  }).addTo(map);
+
+  // Load attack markers from API
+  fetch('/api/attacks/map')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.markers.length) return;
+
+      const maxCount = Math.max(...data.markers.map(m => m.count));
+
+      data.markers.forEach(m => {
+        const radius = 5 + (m.count / maxCount) * 20;   // 5–25px based on count
+        L.circleMarker([m.latitude, m.longitude], {
+          radius,
+          color:       '#f85149',
+          fillColor:   '#f85149',
+          fillOpacity: 0.6,
+          weight:      1,
+        })
+        .bindPopup(`
+          <b>${m.country || 'Unknown'}</b><br/>
+          Attacks: <b>${m.count}</b>
+        `)
+        .addTo(map);
+      });
+    });
+</script>
+{% endblock %}

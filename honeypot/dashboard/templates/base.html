@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HoneyTrap — {% block title %}Dashboard{% endblock %}</title>
+
+  <!-- Bootstrap 5 dark theme -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <!-- Bootstrap icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet" />
+
+  <style>
+    body { background-color: #0d1117; color: #e6edf3; }
+
+    .navbar-brand { font-weight: 700; color: #f85149 !important; letter-spacing: 1px; }
+
+    .stat-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .stat-card .number { font-size: 2.5rem; font-weight: 700; }
+    .stat-card .label  { color: #8b949e; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+
+    .protocol-badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-ssh     { background: #1f6feb; }
+    .badge-ftp     { background: #d29922; }
+    .badge-telnet  { background: #da3633; }
+    .badge-http    { background: #238636; }
+
+    .table-dark { background: #161b22; }
+    .table-dark td, .table-dark th { border-color: #30363d; }
+
+    #map { height: 500px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark" style="background:#161b22; border-bottom:1px solid #30363d;">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">&#128027; HoneyTrap</a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">Dashboard</a>
+      <a class="nav-link {% if request.path == '/map' %}active{% endif %}" href="/map">Attack Map</a>
+      <a class="nav-link {% if request.path == '/events' %}active{% endif %}" href="/events">Events</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid py-4">
+  {% block content %}{% endblock %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

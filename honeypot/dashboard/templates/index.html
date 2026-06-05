@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- Stat cards -->
+<div class="row g-3 mb-4" id="stats-row">
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="number text-danger" id="stat-total">—</div>
+      <div class="label">Total Attacks</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="number text-warning" id="stat-24h">—</div>
+      <div class="label">Last 24 Hours</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="number text-info" id="stat-ips">—</div>
+      <div class="label">Unique IPs</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="number text-success" id="stat-countries">—</div>
+      <div class="label">Countries</div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="row g-3 mb-4">
+  <div class="col-md-8">
+    <div class="stat-card">
+      <h6 class="text-secondary mb-3">Attacks over last 24 hours</h6>
+      <canvas id="chart-timeline" height="100"></canvas>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card">
+      <h6 class="text-secondary mb-3">By Protocol</h6>
+      <canvas id="chart-protocols" height="200"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Top IPs and Countries -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="stat-card">
+      <h6 class="text-secondary mb-3">Top Attacker IPs</h6>
+      <table class="table table-dark table-sm mb-0" id="top-ips-table">
+        <thead><tr><th>IP</th><th class="text-end">Attacks</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="stat-card">
+      <h6 class="text-secondary mb-3">Top Countries</h6>
+      <table class="table table-dark table-sm mb-0" id="top-countries-table">
+        <thead><tr><th>Country</th><th class="text-end">Attacks</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Live events -->
+<div class="stat-card">
+  <h6 class="text-secondary mb-3">Live Events <span class="badge bg-danger ms-1" id="live-badge">LIVE</span></h6>
+  <table class="table table-dark table-sm mb-0">
+    <thead><tr><th>Time</th><th>Protocol</th><th>IP</th><th>Username</th><th>Password</th><th>Commands</th><th>Country</th></tr></thead>
+    <tbody id="live-table"></tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PROTOCOL_COLORS = {
+  SSH: '#1f6feb', FTP: '#d29922', Telnet: '#da3633', HTTP: '#238636', SSH_SESSION: '#1158c7'
+};
+
+function protocolBadge(p) {
+  const cls = {SSH:'badge-ssh', FTP:'badge-ftp', Telnet:'badge-telnet', HTTP:'badge-http'}[p] || '';
+  return `<span class="protocol-badge ${cls}">${p}</span>`;
+}
+
+// ── Charts ──────────────────────────────────────────────
+let timelineChart, protocolChart;
+
+function initCharts(stats) {
+  // Timeline chart
+  const hours  = stats.attacks_by_hour.map(r => r.hour.slice(11, 16));
+  const counts = stats.attacks_by_hour.map(r => r.count);
+  timelineChart = new Chart(document.getElementById('chart-timeline'), {
+    type: 'line',
+    data: {
+      labels: hours,
+      datasets: [{ label: 'Attacks', data: counts,
+        borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', fill: true, tension: 0.3 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: {
+      x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+    }}
+  });
+
+  // Protocol doughnut chart
+  const labels = stats.top_protocols.map(r => r.protocol);
+  const data   = stats.top_protocols.map(r => r.count);
+  const colors = labels.map(l => PROTOCOL_COLORS[l] || '#8b949e');
+  protocolChart = new Chart(document.getElementById('chart-protocols'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+    options: { plugins: { legend: { labels: { color: '#e6edf3' } } } }
+  });
+}
+
+// ── Stats ───────────────────────────────────────────────
+function loadStats() {
+  fetch('/api/stats').then(r => r.json()).then(s => {
+    document.getElementById('stat-total').textContent     = s.total.toLocaleString();
+    document.getElementById('stat-24h').textContent       = s.last_24h.toLocaleString();
+    document.getElementById('stat-ips').textContent       = s.unique_ips.toLocaleString();
+    document.getElementById('stat-countries').textContent = s.top_countries.length;
+
+    // Top IPs table
+    const ipRows = s.top_ips.map(r =>
+      `<tr><td>${r.source_ip}</td><td class="text-end">${r.count}</td></tr>`).join('');
+    document.querySelector('#top-ips-table tbody').innerHTML = ipRows || '<tr><td colspan="2" class="text-secondary">No data yet</td></tr>';
+
+    // Top countries table
+    const cRows = s.top_countries.map(r =>
+      `<tr><td>${r.country}</td><td class="text-end">${r.count}</td></tr>`).join('');
+    document.querySelector('#top-countries-table tbody').innerHTML = cRows || '<tr><td colspan="2" class="text-secondary">No data yet</td></tr>';
+
+    if (!timelineChart) initCharts(s); // init once
+  });
+}
+
+// ── Live events (polls every 5s) ────────────────────────
+function loadLive() {
+  fetch('/api/live').then(r => r.json()).then(events => {
+    const rows = events.map(e => {
+      const time = e.timestamp ? e.timestamp.slice(11, 19) : '';
+      let cmds = '—';
+      if (e.commands) {
+        try { cmds = JSON.parse(e.commands).join(', '); } catch { cmds = e.commands; }
+      }
+      return `<tr>
+        <td class="text-secondary">${time}</td>
+        <td>${protocolBadge(e.protocol)}</td>
+        <td>${e.source_ip || ''}</td>
+        <td>${e.username || '—'}</td>
+        <td>${e.password || '—'}</td>
+        <td><code style="font-size:0.75rem;color:#79c0ff">${cmds}</code></td>
+        <td>${e.country || '—'}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('live-table').innerHTML = rows || '<tr><td colspan="6" class="text-secondary">No attacks yet</td></tr>';
+  });
+}
+
+loadStats();
+loadLive();
+setInterval(loadLive,  5000);   // refresh live table every 5s
+setInterval(loadStats, 30000);  // refresh stats every 30s
+</script>
+{% endblock %}

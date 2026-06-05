@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Events{% endblock %}
+
+{% block content %}
+
+<!-- Filters -->
+<div class="stat-card mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="text-secondary small">Protocol</label>
+      <select class="form-select form-select-sm bg-dark text-light border-secondary" id="filter-protocol">
+        <option value="">All</option>
+        <option>SSH</option>
+        <option>FTP</option>
+        <option>Telnet</option>
+        <option>HTTP</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="text-secondary small">Country</label>
+      <input class="form-control form-control-sm bg-dark text-light border-secondary"
+             id="filter-country" placeholder="e.g. China" />
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-sm btn-outline-danger w-100" onclick="loadEvents(1)">Filter</button>
+    </div>
+  </div>
+</div>
+
+<!-- Events table -->
+<div class="stat-card">
+  <table class="table table-dark table-hover table-sm mb-3">
+    <thead>
+      <tr>
+        <th>#</th><th>Time</th><th>Protocol</th><th>IP</th>
+        <th>Username</th><th>Password</th><th>Commands / Path</th><th>Country</th><th>ISP</th>
+      </tr>
+    </thead>
+    <tbody id="events-table"></tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="d-flex justify-content-between align-items-center">
+    <span class="text-secondary small" id="pagination-info"></span>
+    <div id="pagination-controls"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+
+function protocolBadge(p) {
+  const cls = {SSH:'badge-ssh', FTP:'badge-ftp', Telnet:'badge-telnet', HTTP:'badge-http'}[p] || '';
+  return `<span class="protocol-badge ${cls}">${p}</span>`;
+}
+
+function loadEvents(page) {
+  currentPage = page;
+  const protocol = document.getElementById('filter-protocol').value;
+  const country  = document.getElementById('filter-country').value;
+
+  let url = `/api/events?page=${page}&per_page=50`;
+  if (protocol) url += `&protocol=${protocol}`;
+  if (country)  url += `&country=${encodeURIComponent(country)}`;
+
+  fetch(url).then(r => r.json()).then(data => {
+    const rows = data.events.map(e => {
+      // commands is stored as JSON string — parse it back to array
+      let cmdCell = '—';
+      if (e.commands) {
+        try {
+          const cmds = JSON.parse(e.commands);
+          const preview = cmds.slice(0, 2).join(', ');
+          const extra   = cmds.length > 2 ? ` <span class="text-secondary">+${cmds.length - 2} more</span>` : '';
+          const full    = cmds.join('\n');
+          cmdCell = `<span title="${full}" style="cursor:help">
+            <code style="font-size:0.75rem;color:#79c0ff">${preview}</code>${extra}
+          </span>`;
+        } catch { cmdCell = e.commands; }
+      } else if (e.path) {
+        cmdCell = `<span class="text-secondary">${e.path}</span>`;
+      }
+
+      return `
+      <tr>
+        <td class="text-secondary">${e.id}</td>
+        <td class="text-secondary">${(e.timestamp || '').slice(0, 19).replace('T', ' ')}</td>
+        <td>${protocolBadge(e.protocol)}</td>
+        <td>${e.source_ip || ''}</td>
+        <td>${e.username || '—'}</td>
+        <td>${e.password || '—'}</td>
+        <td>${cmdCell}</td>
+        <td>${e.country || '—'}</td>
+        <td class="text-secondary">${e.isp || '—'}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('events-table').innerHTML =
+      rows || '<tr><td colspan="9" class="text-secondary">No events found</td></tr>';
+
+    document.getElementById('pagination-info').textContent =
+      `${data.total} total events — page ${data.page} of ${data.pages}`;
+
+    // Pagination buttons
+    let btns = '';
+    if (data.page > 1)          btns += `<button class="btn btn-sm btn-outline-secondary me-1" onclick="loadEvents(${data.page - 1})">← Prev</button>`;
+    if (data.page < data.pages) btns += `<button class="btn btn-sm btn-outline-secondary" onclick="loadEvents(${data.page + 1})">Next →</button>`;
+    document.getElementById('pagination-controls').innerHTML = btns;
+  });
+}
+
+loadEvents(1);
+</script>
+{% endblock %}
