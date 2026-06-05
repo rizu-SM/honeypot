@@ -8,24 +8,11 @@ from honeypot.core.config import Config
 from honeypot.core.event_bus import EventBus
 from honeypot.core.logger import get_logger
 from honeypot.services.base import BaseService
+from honeypot.deception import PseudoFS, run_command
 
 logger = get_logger(__name__)
 
-# The banner that identifies our "server" to the attacker
 SSH_BANNER = "SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.3"
-
-# Fake responses to common commands typed in the shell
-FAKE_RESPONSES = {
-    "id":           "uid=0(root) gid=0(root) groups=0(root)",
-    "whoami":       "root",
-    "pwd":          "/root",
-    "uname -a":     "Linux ubuntu 5.4.0-42-generic #46-Ubuntu SMP Fri Jul 10 00:24:02 UTC 2020 x86_64 GNU/Linux",
-    "ls":           "snap",
-    "cat /etc/passwd": "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin",
-    "ifconfig":     "eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500\n        inet 10.0.2.15",
-    "exit":         "",
-    "logout":       "",
-}
 
 
 class SSHServerInterface(paramiko.ServerInterface):
@@ -79,9 +66,10 @@ class SSHServerInterface(paramiko.ServerInterface):
     def check_channel_exec_request(self, channel: paramiko.Channel, command: bytes) -> bool:
         """Called when attacker runs a single command (ssh host 'command')."""
         cmd = command.decode("utf-8", errors="replace").strip()
-        response = FAKE_RESPONSES.get(cmd, f"bash: {cmd.split()[0]}: command not found")
-        if response:
-            channel.sendall((response + "\n").encode())
+        fs  = PseudoFS()
+        output, _ = run_command(cmd, fs)
+        if output:
+            channel.sendall((output + "\n").encode())
         channel.send_exit_status(0)
         return True
 
@@ -166,30 +154,31 @@ class SSHHoneypot(BaseService):
     def _run_shell(self, channel: paramiko.Channel, ip: str, port: int, username: str):
         """Simulate an interactive shell session after login."""
         commands = []
+        fs       = PseudoFS()
 
-        # Send a realistic welcome message
         channel.sendall(
             b"Welcome to Ubuntu 20.04.6 LTS (GNU/Linux 5.4.0-42-generic x86_64)\r\n\r\n"
             b"Last login: Mon Jan  1 00:00:01 2024 from 192.168.1.1\r\n"
         )
 
         while not self._stop_event.is_set():
-            channel.sendall(b"root@ubuntu:~# ")
+            prompt = f"root@{fs.hostname}:{fs.get_current_directory()}# "
+            channel.sendall(prompt.encode())
 
             cmd = self._read_channel(channel)
             if cmd is None:
                 break
+            if not cmd:
+                continue
 
             commands.append(cmd)
 
-            if cmd.lower() in ("exit", "logout", "quit", ""):
+            output, should_exit = run_command(cmd, fs)
+            if output:
+                channel.sendall((output.replace("\n", "\r\n") + "\r\n").encode())
+            if should_exit:
                 break
 
-            response = FAKE_RESPONSES.get(cmd, f"bash: {cmd.split()[0] if cmd else ''}: command not found")
-            if response:
-                channel.sendall((response + "\r\n").encode())
-
-        # Log the full session commands if any were captured
         if commands:
             self.event_bus.publish({
                 "timestamp":   datetime.datetime.now(datetime.timezone.utc).isoformat(),
