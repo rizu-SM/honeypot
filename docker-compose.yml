@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  honeypot:
+    build: .
+    container_name: honeytrap
+    ports:
+      - "2222:2222"   # SSH honeypot
+      - "8080:8080"   # HTTP honeypot
+      - "2121:2121"   # FTP honeypot
+      - "2323:2323"   # Telnet honeypot
+      - "5000:5000"   # Dashboard
+    volumes:
+      # Mount local folders so data persists when container restarts
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
